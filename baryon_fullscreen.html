@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Baryonic Matter — Galaxy Simulation</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@300;400;700&family=DM+Mono:wght@300;400&display=swap');
+
+  :root {
+    --accent: #4ef0d4;
+    --accent2: #ff7043;
+    --dim: rgba(78,240,212,0.15);
+    --panel-bg: rgba(2, 10, 20, 0.72);
+    --border: rgba(78,240,212,0.18);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #000;
+    font-family: 'DM Mono', monospace;
+    cursor: crosshair;
+  }
+
+  /* ── Full-screen canvas ── */
+  #galaxyCanvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+  }
+
+  /* ── HUD base ── */
+  .hud {
+    position: fixed;
+    pointer-events: none;
+  }
+  .hud * { pointer-events: auto; }
+
+  /* ── TOP LEFT: Info panel ── */
+  #info {
+    top: 28px; left: 28px;
+    width: 260px;
+  }
+
+  .info-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    color: var(--accent);
+    text-shadow: 0 0 16px rgba(78,240,212,0.6);
+    margin-bottom: 2px;
+  }
+
+  .info-sub {
+    font-size: 0.52rem;
+    letter-spacing: 0.18em;
+    color: rgba(78,240,212,0.35);
+    margin-bottom: 16px;
+    text-transform: uppercase;
+  }
+
+  .stat-block {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--accent);
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    backdrop-filter: blur(8px);
+  }
+
+  .stat-block-title {
+    font-size: 0.48rem;
+    letter-spacing: 0.2em;
+    color: rgba(78,240,212,0.4);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(78,240,212,0.06);
+    font-size: 0.6rem;
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { color: rgba(78,240,212,0.45); font-weight: 300; }
+  .stat-value { color: var(--accent); }
+
+  /* Rotation curve mini-plot */
+  #miniCurve {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--accent);
+    backdrop-filter: blur(8px);
+    display: block;
+  }
+
+  /* ── BOTTOM RIGHT: Controls ── */
+  #controls {
+    bottom: 28px; right: 28px;
+    width: 240px;
+  }
+
+  .ctrl-panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-right: 2px solid var(--accent);
+    padding: 14px 16px;
+    backdrop-filter: blur(8px);
+    margin-bottom: 8px;
+  }
+
+  .ctrl-title {
+    font-size: 0.48rem;
+    letter-spacing: 0.2em;
+    color: rgba(78,240,212,0.4);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .slider-row {
+    margin-bottom: 12px;
+  }
+  .slider-row:last-child { margin-bottom: 0; }
+
+  .slider-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.58rem;
+    color: rgba(78,240,212,0.5);
+    margin-bottom: 5px;
+  }
+  .slider-label span { color: var(--accent); }
+
+  input[type=range] {
+    width: 100%;
+    -webkit-appearance: none;
+    height: 1px;
+    background: rgba(78,240,212,0.2);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 10px; height: 10px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgba(78,240,212,0.9);
+  }
+  input[type=range]:hover { background: rgba(78,240,212,0.35); }
+
+  /* Toggle buttons */
+  .toggle-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .tog-btn {
+    flex: 1;
+    padding: 6px 0;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.5rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: rgba(78,240,212,0.4);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tog-btn.active {
+    background: rgba(78,240,212,0.1);
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 10px rgba(78,240,212,0.2);
+  }
+  .tog-btn:hover { border-color: rgba(78,240,212,0.5); color: rgba(78,240,212,0.7); }
+
+  /* ── View indicator (bottom center) ── */
+  #viewIndicator {
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  .view-text {
+    font-size: 0.5rem;
+    letter-spacing: 0.2em;
+    color: rgba(78,240,212,0.22);
+    text-align: center;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  /* ── Corner decorations ── */
+  .corner {
+    position: fixed;
+    width: 18px; height: 18px;
+    pointer-events: none;
+    opacity: 0.3;
+  }
+  .corner-tl { top: 16px; left: 16px; border-top: 1px solid var(--accent); border-left: 1px solid var(--accent); }
+  .corner-tr { top: 16px; right: 16px; border-top: 1px solid var(--accent); border-right: 1px solid var(--accent); }
+  .corner-bl { bottom: 16px; left: 16px; border-bottom: 1px solid var(--accent); border-left: 1px solid var(--accent); }
+  .corner-br { bottom: 16px; right: 16px; border-bottom: 1px solid var(--accent); border-right: 1px solid var(--accent); }
+
+  /* Scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.04) 2px,
+      rgba(0,0,0,0.04) 4px
+    );
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  /* Vignette */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.65) 100%);
+    pointer-events: none;
+    z-index: 1;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="galaxyCanvas"></canvas>
+
+<!-- Corner decorations -->
+<div class="corner corner-tl"></div>
+<div class="corner corner-tr"></div>
+<div class="corner corner-bl"></div>
+<div class="corner corner-br"></div>
+
+<!-- TOP LEFT: Info + mini curve -->
+<div class="hud" id="info">
+  <div class="info-title">BARYONIC MATTER</div>
+  <div class="info-sub">Exponential Disk · No Dark Matter</div>
+
+  <div class="stat-block">
+    <div class="stat-block-title">// Diagnostics</div>
+    <div class="stat-row"><span class="stat-label">Peak Velocity</span><span class="stat-value" id="d_vpeak">—</span></div>
+    <div class="stat-row"><span class="stat-label">Peak Radius</span><span class="stat-value" id="d_rpeak">—</span></div>
+    <div class="stat-row"><span class="stat-label">Outer v(r)</span><span class="stat-value" id="d_vouter">—</span></div>
+    <div class="stat-row"><span class="stat-label">Slope (outer)</span><span class="stat-value" id="d_slope">—</span></div>
+    <div class="stat-row"><span class="stat-label">M_enc (outer)</span><span class="stat-value" id="d_menc">—</span></div>
+  </div>
+
+  <div class="stat-block" style="padding:10px 10px 8px;">
+    <div class="stat-block-title">// Rotation Curve v(r)</div>
+    <canvas id="miniCurve" width="230" height="90"></canvas>
+    <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:0.45rem;color:rgba(78,240,212,0.28);">
+      <span>0</span><span id="rmax_label">30 kpc</span>
+    </div>
+    <div style="display:flex;gap:12px;margin-top:4px;font-size:0.46rem;color:rgba(78,240,212,0.3);">
+      <span style="color:var(--accent)">— baryonic</span>
+      <span style="color:var(--accent2);opacity:0.7">-- keplerian</span>
+    </div>
+  </div>
+
+  <div class="stat-block">
+    <div class="stat-block-title">// View State</div>
+    <div class="stat-row"><span class="stat-label">Pitch</span><span class="stat-value" id="d_pitch">—</span></div>
+    <div class="stat-row"><span class="stat-label">Yaw</span><span class="stat-value" id="d_yaw">—</span></div>
+    <div class="stat-row"><span class="stat-label">Zoom</span><span class="stat-value" id="d_zoom">—</span></div>
+  </div>
+</div>
+
+<!-- BOTTOM RIGHT: Controls -->
+<div class="hud" id="controls">
+  <div class="ctrl-panel">
+    <div class="ctrl-title">// Parameters</div>
+    <div class="slider-row">
+      <div class="slider-label">M<sub>disk</sub> <span id="val_mass">6.0 ×10¹⁰ M☉</span></div>
+      <input type="range" id="sl_mass" min="1" max="20" step="0.5" value="6">
+    </div>
+    <div class="slider-row">
+      <div class="slider-label">Scale R<sub>d</sub> <span id="val_rd">3.0 kpc</span></div>
+      <input type="range" id="sl_rd" min="0.5" max="8" step="0.1" value="3">
+    </div>
+    <div class="slider-row">
+      <div class="slider-label">Max Radius <span id="val_rmax">30 kpc</span></div>
+      <input type="range" id="sl_rmax" min="10" max="60" step="1" value="30">
+    </div>
+    <div class="slider-row">
+      <div class="slider-label">Particle Count <span id="val_npart">3000</span></div>
+      <input type="range" id="sl_npart" min="500" max="6000" step="500" value="3000">
+    </div>
+  </div>
+
+  <div class="ctrl-panel">
+    <div class="ctrl-title">// View</div>
+    <div class="toggle-row">
+      <button class="tog-btn active" id="btn_autospin">Auto Spin</button>
+      <button class="tog-btn active" id="btn_ring">Orbit Ring</button>
+      <button class="tog-btn active" id="btn_core">Core Glow</button>
+    </div>
+  </div>
+
+  <div style="font-size:0.46rem;letter-spacing:0.12em;color:rgba(78,240,212,0.2);text-align:right;padding-right:2px;margin-top:4px;">
+    DRAG · SCROLL TO ZOOM · TOUCH SUPPORTED
+  </div>
+</div>
+
+<!-- Bottom center view hint -->
+<div class="hud" id="viewIndicator">
+  <div class="view-text" id="viewHint">CLICK AND DRAG TO ROTATE 360°</div>
+</div>
+
+<script>
+// ─── Physics ──────────────────────────────────────────────────
+const G = 4.302e-6;
+const NCURVE = 300;
+let M_disk = 6e10, R_disk = 3, R_max = 30;
+
+function diskMassEnclosed(r) {
+  return M_disk * (1 - Math.exp(-r / R_disk) * (1 + r / R_disk));
+}
+function rotVel(r) {
+  const M = diskMassEnclosed(r);
+  return Math.sqrt(G * M / r);
+}
+
+// ─── Canvas setup ─────────────────────────────────────────────
+const gc = document.getElementById('galaxyCanvas');
+const gctx = gc.getContext('2d');
+let W, H, CX, CY, BASE_SCALE;
+
+function resize() {
+  W = gc.width  = window.innerWidth;
+  H = gc.height = window.innerHeight;
+  CX = W / 2; CY = H / 2;
+  BASE_SCALE = Math.min(W, H) * 0.42;
+}
+resize();
+window.addEventListener('resize', () => { resize(); });
+
+// ─── 3D View State ─────────────────────────────────────────────
+let viewPitch = 0.28;
+let viewYaw   = 0.0;
+let zoom      = 1.0;
+let autoSpin  = true;
+let showRing  = true;
+let showCore  = true;
+let isDragging = false, lastMX = 0, lastMY = 0;
+let hintFade  = 1.0;
+let hintTimer = 0;
+
+function project(x, y, z) {
+  const x1 =  x * Math.cos(viewYaw) + z * Math.sin(viewYaw);
+  const z1 = -x * Math.sin(viewYaw) + z * Math.cos(viewYaw);
+  const y2 = y  * Math.cos(viewPitch) - z1 * Math.sin(viewPitch);
+  return {
+    sx: CX + x1 * zoom,
+    sy: CY - y2 * zoom,
+    depth: y * Math.sin(viewPitch) + z1 * Math.cos(viewPitch)
+  };
+}
+
+// ─── Particles ────────────────────────────────────────────────
+let particles = [];
+let N_PART = 3000;
+
+function initParticles() {
+  particles = [];
+  for (let i = 0; i < N_PART; i++) {
+    const u = Math.random();
+    const rKpc = Math.min(-Math.log(1 - u * 0.995) * R_disk, R_max * 0.97);
+    const r3d  = rKpc / R_max * BASE_SCALE;
+    const thickness = 0.045 * BASE_SCALE * Math.exp(-rKpc / (R_disk * 1.2));
+    const z3d  = (Math.random() - 0.5) * 2 * thickness;
+    const phi  = Math.random() * Math.PI * 2;
+    const vrot = rotVel(Math.max(rKpc, 0.01));
+    const angSpeed = vrot / (Math.max(rKpc, 0.01)) * 0.0028;
+    const brightness = Math.random() * 0.55 + 0.38;
+    const hue = 172 + (rKpc / R_max) * 55 + Math.random() * 12;
+    const size = Math.random() * 1.4 + 0.35;
+    particles.push({ r3d, phi, z3d, angSpeed, brightness, size, hue, rKpc });
+  }
+}
+
+// ─── Draw ─────────────────────────────────────────────────────
+function drawGalaxy() {
+  gctx.clearRect(0, 0, W, H);
+
+  // Deep space background
+  gctx.fillStyle = '#00000a';
+  gctx.fillRect(0, 0, W, H);
+
+  // Background star field (static, cheap)
+  gctx.fillStyle = 'rgba(200,220,255,0.28)';
+  for (let i = 0; i < 280; i++) {
+    const sx = ((i * 2731) % W);
+    const sy = ((i * 1847) % H);
+    const sz = 0.3 + (i % 5) * 0.15;
+    gctx.beginPath();
+    gctx.arc(sx, sy, sz, 0, Math.PI * 2);
+    gctx.fill();
+  }
+
+  // Core glow
+  if (showCore) {
+    const cp = project(0, 0, 0);
+    const gr = gctx.createRadialGradient(cp.sx, cp.sy, 0, cp.sx, cp.sy, BASE_SCALE * 0.32 * zoom);
+    gr.addColorStop(0,   'rgba(200,245,255,0.32)');
+    gr.addColorStop(0.3, 'rgba(80,200,255,0.12)');
+    gr.addColorStop(0.7, 'rgba(20,80,180,0.05)');
+    gr.addColorStop(1,   'rgba(0,0,0,0)');
+    gctx.fillStyle = gr;
+    gctx.beginPath();
+    gctx.arc(cp.sx, cp.sy, BASE_SCALE * 0.32 * zoom, 0, Math.PI * 2);
+    gctx.fill();
+  }
+
+  // Orbit ring
+  if (showRing) {
+    gctx.strokeStyle = 'rgba(78,240,212,0.07)';
+    gctx.lineWidth = 0.6;
+    gctx.beginPath();
+    const RS = 60;
+    for (let i = 0; i <= RS; i++) {
+      const a = (i / RS) * Math.PI * 2;
+      const { sx, sy } = project(
+        Math.cos(a) * BASE_SCALE * 0.92,
+        0,
+        Math.sin(a) * BASE_SCALE * 0.92
+      );
+      i === 0 ? gctx.moveTo(sx, sy) : gctx.lineTo(sx, sy);
+    }
+    gctx.stroke();
+  }
+
+  // Project & depth-sort particles
+  const proj = particles.map(p => {
+    p.phi += p.angSpeed;
+    const x3d = p.r3d * Math.cos(p.phi);
+    const zdisk = p.r3d * Math.sin(p.phi);
+    const { sx, sy, depth } = project(x3d, p.z3d, zdisk);
+    return { sx, sy, depth, p };
+  });
+  proj.sort((a, b) => a.depth - b.depth);
+
+  for (const { sx, sy, depth, p } of proj) {
+    const depthFade = 0.65 + 0.35 * (depth / (BASE_SCALE * zoom) + 1) / 2;
+    const radFade   = Math.max(0, 1 - p.r3d / (BASE_SCALE * 0.96));
+    const alpha     = p.brightness * (0.35 + 0.45 * radFade) * Math.min(depthFade, 1.05);
+    gctx.fillStyle  = `hsla(${p.hue},76%,77%,${Math.min(alpha, 1).toFixed(3)})`;
+    gctx.beginPath();
+    gctx.arc(sx, sy, p.size * zoom, 0, Math.PI * 2);
+    gctx.fill();
+  }
+}
+
+// ─── Mini Rotation Curve ──────────────────────────────────────
+const mc   = document.getElementById('miniCurve');
+const mctx = mc.getContext('2d');
+const MPL = 6, MPR = 4, MPT = 4, MPB = 4;
+const MCW = mc.width - MPL - MPR, MCH = mc.height - MPT - MPB;
+
+function drawMiniCurve() {
+  const r = [], v = [];
+  for (let i = 0; i < NCURVE; i++) {
+    const ri = 0.3 + (R_max - 0.3) * i / (NCURVE - 1);
+    r.push(ri); v.push(rotVel(ri));
+  }
+  const vmax = Math.max(...v) * 1.1;
+
+  mctx.clearRect(0, 0, mc.width, mc.height);
+
+  // Grid lines
+  mctx.strokeStyle = 'rgba(78,240,212,0.08)';
+  mctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = MPT + MCH * (1 - i / 4);
+    mctx.beginPath(); mctx.moveTo(MPL, y); mctx.lineTo(MPL + MCW, y); mctx.stroke();
+  }
+
+  // Keplerian dashed
+  const vRef = v[Math.floor(NCURVE * 0.2)], rRef = r[Math.floor(NCURVE * 0.2)];
+  mctx.strokeStyle = 'rgba(255,112,67,0.5)';
+  mctx.setLineDash([3, 3]); mctx.lineWidth = 1;
+  mctx.beginPath();
+  for (let i = Math.floor(NCURVE * 0.2); i < NCURVE; i++) {
+    const vK = vRef * Math.sqrt(rRef / r[i]);
+    const x = MPL + MCW * r[i] / R_max;
+    const y = MPT + MCH * (1 - vK / vmax);
+    i === Math.floor(NCURVE * 0.2) ? mctx.moveTo(x, y) : mctx.lineTo(x, y);
+  }
+  mctx.stroke(); mctx.setLineDash([]);
+
+  // Baryonic — glow passes
+  for (let pass = 0; pass < 3; pass++) {
+    mctx.strokeStyle = `rgba(78,240,212,${[0.07, 0.18, 0.9][pass]})`;
+    mctx.lineWidth = [5, 2, 1][pass];
+    mctx.beginPath();
+    for (let i = 0; i < NCURVE; i++) {
+      const x = MPL + MCW * r[i] / R_max;
+      const y = MPT + MCH * (1 - v[i] / vmax);
+      i === 0 ? mctx.moveTo(x, y) : mctx.lineTo(x, y);
+    }
+    mctx.stroke();
+  }
+
+  // Diagnostics update
+  let vpeak = 0, rpeak = 0;
+  for (let i = 0; i < NCURVE; i++) if (v[i] > vpeak) { vpeak = v[i]; rpeak = r[i]; }
+  const vouter = v[NCURVE - 1];
+  const slope  = Math.log(vouter / vpeak) / Math.log(r[NCURVE - 1] / rpeak);
+  const menc   = diskMassEnclosed(R_max);
+
+  document.getElementById('d_vpeak').textContent  = vpeak.toFixed(1) + ' km/s';
+  document.getElementById('d_rpeak').textContent  = rpeak.toFixed(1) + ' kpc';
+  document.getElementById('d_vouter').textContent = vouter.toFixed(1) + ' km/s';
+  document.getElementById('d_slope').textContent  = slope.toFixed(3);
+  document.getElementById('d_menc').textContent   = (menc / 1e9).toFixed(2) + ' ×10⁹ M☉';
+  document.getElementById('rmax_label').textContent = R_max + ' kpc';
+}
+
+function updateViewStats() {
+  const pitchDeg = (viewPitch * 180 / Math.PI).toFixed(1);
+  const yawDeg   = (((viewYaw * 180 / Math.PI) % 360 + 360) % 360).toFixed(1);
+  document.getElementById('d_pitch').textContent = pitchDeg + '°';
+  document.getElementById('d_yaw').textContent   = yawDeg + '°';
+  document.getElementById('d_zoom').textContent  = zoom.toFixed(2) + '×';
+}
+
+// ─── Controls ─────────────────────────────────────────────────
+document.getElementById('sl_mass').addEventListener('input', function () {
+  M_disk = +this.value * 1e10;
+  document.getElementById('val_mass').textContent = (+this.value).toFixed(1) + ' ×10¹⁰ M☉';
+  initParticles(); drawMiniCurve();
+});
+document.getElementById('sl_rd').addEventListener('input', function () {
+  R_disk = +this.value;
+  document.getElementById('val_rd').textContent = R_disk.toFixed(1) + ' kpc';
+  initParticles(); drawMiniCurve();
+});
+document.getElementById('sl_rmax').addEventListener('input', function () {
+  R_max = +this.value;
+  document.getElementById('val_rmax').textContent = R_max + ' kpc';
+  drawMiniCurve();
+});
+document.getElementById('sl_npart').addEventListener('input', function () {
+  N_PART = +this.value;
+  document.getElementById('val_npart').textContent = N_PART;
+  initParticles();
+});
+
+function setBtn(btn, state) {
+  btn.classList.toggle('active', state);
+}
+document.getElementById('btn_autospin').addEventListener('click', function () {
+  autoSpin = !autoSpin; setBtn(this, autoSpin);
+});
+document.getElementById('btn_ring').addEventListener('click', function () {
+  showRing = !showRing; setBtn(this, showRing);
+});
+document.getElementById('btn_core').addEventListener('click', function () {
+  showCore = !showCore; setBtn(this, showCore);
+});
+
+// ─── Mouse / Touch ─────────────────────────────────────────────
+gc.addEventListener('mousedown', e => {
+  if (e.target !== gc) return;
+  isDragging = true; autoSpin = false;
+  setBtn(document.getElementById('btn_autospin'), false);
+  lastMX = e.clientX; lastMY = e.clientY;
+  hintTimer = 1;
+});
+window.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  viewYaw   += (e.clientX - lastMX) * 0.006;
+  viewPitch += (e.clientY - lastMY) * 0.006;
+  viewPitch  = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, viewPitch));
+  lastMX = e.clientX; lastMY = e.clientY;
+});
+window.addEventListener('mouseup', () => { isDragging = false; });
+
+gc.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom *= e.deltaY > 0 ? 0.94 : 1.06;
+  zoom = Math.max(0.3, Math.min(3.0, zoom));
+}, { passive: false });
+
+gc.addEventListener('touchstart', e => {
+  if (e.touches.length !== 1) return;
+  isDragging = true; autoSpin = false;
+  setBtn(document.getElementById('btn_autospin'), false);
+  lastMX = e.touches[0].clientX; lastMY = e.touches[0].clientY;
+  hintTimer = 1;
+}, { passive: true });
+gc.addEventListener('touchmove', e => {
+  if (!isDragging || e.touches.length !== 1) return;
+  viewYaw   += (e.touches[0].clientX - lastMX) * 0.006;
+  viewPitch += (e.touches[0].clientY - lastMY) * 0.006;
+  viewPitch  = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, viewPitch));
+  lastMX = e.touches[0].clientX; lastMY = e.touches[0].clientY;
+}, { passive: true });
+gc.addEventListener('touchend', () => { isDragging = false; });
+
+// ─── Main Loop ────────────────────────────────────────────────
+const hint = document.getElementById('viewHint');
+let lastT = 0;
+
+function loop(t) {
+  const dt = t - lastT; lastT = t;
+
+  if (autoSpin) viewYaw += 0.0025;
+
+  drawGalaxy();
+  updateViewStats();
+
+  // Fade hint after interaction
+  if (hintTimer > 0) {
+    hintFade = Math.max(0, hintFade - 0.02);
+    hint.style.opacity = hintFade;
+    if (hintFade === 0) hintTimer = 0;
+  }
+
+  requestAnimationFrame(loop);
+}
+
+// ─── Init ─────────────────────────────────────────────────────
+initParticles();
+drawMiniCurve();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
